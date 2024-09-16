@@ -106,10 +106,14 @@ for (let i = 0; i < singleTypes.length; i++) {
     type.slice(1) +
     "Ty],\n";
 
-  const sigIntAliasedInt = bytesToInt(
-    keccak256(Buffer.from("log" + "(" + typeAliasedInt + ")")).slice(0, 4)
-  );
-  if (sigIntAliasedInt !== sigInt) {
+  // For full backwards compatibility, also support the (invalid) selectors of
+  // `log(int)` and `log(uint)`. The selector encoding specifies that one has to
+  // use the canonical type name but it seems that we supported it in the past.
+  if (type !== typeAliasedInt) {
+    const sigIntAliasedInt = bytesToInt(
+      keccak256(Buffer.from("log" + "(" + typeAliasedInt + ")")).slice(0, 4)
+    );
+
     logger +=
       "  " +
       sigIntAliasedInt +
@@ -134,20 +138,17 @@ for (let i = 0; i < singleTypes.length; i++) {
 }
 
 const maxNumberOfParameters = 4;
+/** Mapping from sequence length to the number of permutations of that length. */
 const numberOfPermutations: Record<number, number> = {};
 const dividers: Record<number, number> = {};
-const paramsNames: Record<number, string[]> = {};
 
+// Pre-compute values
 for (let i = 0; i < maxNumberOfParameters; i++) {
   dividers[i] = Math.pow(maxNumberOfParameters, i);
   numberOfPermutations[i] = Math.pow(maxNumberOfParameters, i + 1);
-
-  paramsNames[i] = [];
-  for (let j = 0; j <= i; j++) {
-    paramsNames[i][j] = "p" + j.toString();
-  }
 }
 
+// Generate the function definitions
 for (let i = 0; i < maxNumberOfParameters; i++) {
   for (let j = 0; j < numberOfPermutations[i]; j++) {
     const params = [];
@@ -164,8 +165,8 @@ for (let i = 0; i < maxNumberOfParameters; i++) {
     let input = "";
     let internalParamsNames = [];
     for (let k = 0; k <= i; k++) {
-      input += params[k] + " " + paramsNames[i][k] + ", ";
-      internalParamsNames.push(paramsNames[i][k]);
+      input += params[k] + ` p${k}, `;
+      internalParamsNames.push(`p${k}`);
 
       let param = params[k].replace(" memory", "");
       let paramAliasedInt = param.replace("int256", "int");
@@ -190,11 +191,14 @@ for (let i = 0; i < maxNumberOfParameters; i++) {
       );
       logger += "  " + sigInt + ": [" + constParams.join(", ") + "],\n";
 
+      // Again, for full backwards compatibility, also support the (invalid)
+      // selectors that contain the `int`/`uint` aliases in the selector calculation.
       const sigIntAliasedInt = bytesToInt(
         keccak256(
           Buffer.from("log(" + sigParamsAliasedInt.join(",") + ")")
         ).slice(0, 4)
       );
+
       if (sigIntAliasedInt !== sigInt) {
         logger +=
           "  " + sigIntAliasedInt + ": [" + constParams.join(", ") + "],\n";
